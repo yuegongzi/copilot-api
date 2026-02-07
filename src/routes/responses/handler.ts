@@ -26,6 +26,7 @@ export const handleResponses = async (c: Context) => {
   logger.debug("Responses request payload:", JSON.stringify(payload))
 
   useFunctionApplyPatch(payload)
+  filterUnsupportedTools(payload)
 
   const selectedModel = state.models?.data.find(
     (model) => model.id === payload.model,
@@ -115,6 +116,23 @@ const useFunctionApplyPatch = (payload: ResponsesPayload): void => {
           }
         }
       }
+    }
+  }
+}
+
+/**
+ * Filter out unsupported tool types for Copilot API
+ * Copilot only supports "function" type tools
+ */
+const filterUnsupportedTools = (payload: ResponsesPayload): void => {
+  if (Array.isArray(payload.tools)) {
+    const originalCount = payload.tools.length
+    payload.tools = payload.tools.filter((tool) => tool.type === "function")
+    const filteredCount = originalCount - payload.tools.length
+    if (filteredCount > 0) {
+      logger.debug(
+        `Filtered out ${filteredCount} unsupported tool(s) from request`,
+      )
     }
   }
 }
