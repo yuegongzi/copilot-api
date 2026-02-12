@@ -1,3 +1,4 @@
+import consola from "consola"
 import { events } from "fetch-event-stream"
 
 import type { ModelOverride } from "~/lib/config"
@@ -27,20 +28,25 @@ export async function createForwardedAnthropicCompletion(
     headers["x-api-key"] = override.apiKey
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(finalPayload),
-  })
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(finalPayload),
+    })
 
-  if (!response.ok) {
-    throw new HTTPError("Forward request failed", response)
+    if (!response.ok) {
+      throw new HTTPError("Forward request failed", response)
+    }
+
+    // 流式/非流式处理
+    if (payload.stream) {
+      return events(response)
+    }
+
+    return await response.json()
+  } catch (error) {
+    consola.error(`[Forward Error] Failed to fetch ${url}:`, error)
+    throw error
   }
-
-  // 流式/非流式处理
-  if (payload.stream) {
-    return events(response)
-  }
-
-  return await response.json()
 }
