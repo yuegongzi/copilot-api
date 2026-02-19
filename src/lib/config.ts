@@ -12,12 +12,6 @@ export interface AccountConfig {
   createdAt: string
 }
 
-export interface ModelOverride {
-  targetUrl: string // 目标 API Base URL (e.g. "https://api.deepseek.com/v1")
-  apiKey?: string // 目标 API Key (可选)
-  modelMapping?: string // 模型名称映射 (可选，转发时替换 model 字段)
-}
-
 export interface AppConfig {
   extraPrompts?: Record<string, string>
   smallModel?: string
@@ -29,8 +23,6 @@ export interface AppConfig {
   // Account management
   accounts?: Array<AccountConfig>
   activeAccountId?: string | null
-  // Model forwarding
-  modelOverrides?: Record<string, ModelOverride>
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -187,9 +179,4 @@ export function getReasoningEffortForModel(
   }
 
   return "high"
-}
-
-export function getModelOverride(model: string): ModelOverride | undefined {
-  const config = getConfig()
-  return config.modelOverrides?.[model]
 }

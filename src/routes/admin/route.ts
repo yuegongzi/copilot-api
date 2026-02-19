@@ -8,7 +8,6 @@ import {
   setActiveAccount,
   type Account,
 } from "~/lib/accounts"
-import { getConfig, saveConfig, type ModelOverride } from "~/lib/config"
 import { copilotTokenManager } from "~/lib/copilot-token-manager"
 import { state } from "~/lib/state"
 import { getDeviceCode } from "~/services/github/get-device-code"
@@ -334,54 +333,4 @@ adminRoutes.get("/api/auth/status", async (c) => {
 // Serve static HTML for admin UI
 adminRoutes.get("/", (c) => {
   return c.html(adminHtml)
-})
-
-// ============ Model Overrides API ============
-
-// GET /admin/api/model-overrides - 获取所有转发规则
-adminRoutes.get("/api/model-overrides", (c) => {
-  const config = getConfig()
-  const overrides = config.modelOverrides ?? {}
-
-  // 脱敏 API Key
-  const safeOverrides = Object.fromEntries(
-    Object.entries(overrides).map(([model, override]) => [
-      model,
-      { ...override, apiKey: override.apiKey ? "***" : undefined },
-    ]),
-  )
-  return c.json({ overrides: safeOverrides })
-})
-
-// PUT /admin/api/model-overrides/:model - 添加/更新规则
-adminRoutes.put("/api/model-overrides/:model", async (c) => {
-  const model = c.req.param("model")
-  const body = await c.req.json<ModelOverride>()
-
-  if (!body.targetUrl) {
-    return c.json(
-      { error: { message: "targetUrl is required", type: "validation_error" } },
-      400,
-    )
-  }
-
-  const config = getConfig()
-  config.modelOverrides = { ...config.modelOverrides, [model]: body }
-  await saveConfig(config)
-
-  return c.json({ success: true })
-})
-
-// DELETE /admin/api/model-overrides/:model - 删除规则
-adminRoutes.delete("/api/model-overrides/:model", async (c) => {
-  const model = c.req.param("model")
-
-  const config = getConfig()
-  if (config.modelOverrides && Object.hasOwn(config.modelOverrides, model)) {
-    const { [model]: _, ...rest } = config.modelOverrides
-    config.modelOverrides = rest
-    await saveConfig(config)
-  }
-
-  return c.json({ success: true })
 })

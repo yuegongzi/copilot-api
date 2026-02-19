@@ -149,7 +149,6 @@ export const adminHtml = `<!DOCTYPE html>
     <div class="tabs">
       <button class="tab active" data-tab="accounts">Accounts</button>
       <button class="tab" data-tab="models">Models</button>
-      <button class="tab" data-tab="forwarding">Forwarding</button>
       <button class="tab" data-tab="usage">Usage</button>
     </div>
     <div class="tab-content active" id="tab-accounts">
@@ -174,46 +173,6 @@ export const adminHtml = `<!DOCTYPE html>
           </button>
         </div>
         <div class="models-grid" id="modelsList"><div class="empty-state">Loading models...</div></div>
-      </div>
-    </div>
-    <div class="tab-content" id="tab-forwarding">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Model Forwarding Rules</span>
-          <button class="btn btn-primary" id="addForwardingBtn">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"></path></svg>
-            Add Rule
-          </button>
-        </div>
-        <p style="color:#8b949e;font-size:0.875rem;margin-bottom:1rem;">Forward specific model requests to external OpenAI-compatible APIs instead of GitHub Copilot.</p>
-        <div id="forwardingList"><div class="empty-state">Loading forwarding rules...</div></div>
-      </div>
-      <div class="card" id="forwardingForm" style="display:none;">
-        <div class="card-header">
-          <span class="card-title" id="forwardingFormTitle">Add Forwarding Rule</span>
-        </div>
-        <div style="display:grid;gap:1rem;">
-          <div>
-            <label class="label">Model Name *</label>
-            <input type="text" class="select" id="fwdModel" placeholder="e.g. deepseek-v3, gpt-4-custom">
-          </div>
-          <div>
-            <label class="label">Target Base URL *</label>
-            <input type="text" class="select" id="fwdTargetUrl" placeholder="e.g. https://api.deepseek.com/v1">
-          </div>
-          <div>
-            <label class="label">Model Mapping (optional)</label>
-            <input type="text" class="select" id="fwdModelMapping" placeholder="e.g. deepseek-chat (model name sent to target API)">
-          </div>
-          <div>
-            <label class="label">API Key (optional)</label>
-            <input type="password" class="select" id="fwdApiKey" placeholder="Leave empty to keep existing key when editing">
-          </div>
-          <div class="modal-actions">
-            <button class="btn" id="cancelForwarding">Cancel</button>
-            <button class="btn btn-primary" id="saveForwarding">Save Rule</button>
-          </div>
-        </div>
       </div>
     </div>
     <div class="tab-content" id="tab-usage">
@@ -268,7 +227,6 @@ export const adminHtml = `<!DOCTYPE html>
         tab.classList.add('active');
         document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
         if (tab.dataset.tab === 'models') fetchModels();
-        if (tab.dataset.tab === 'forwarding') fetchForwardingRules();
         if (tab.dataset.tab === 'usage') fetchUsage();
       });
     });
@@ -451,115 +409,6 @@ export const adminHtml = `<!DOCTYPE html>
     document.getElementById('startAuth').addEventListener('click', startAuth);
     document.getElementById('refreshModels').addEventListener('click', fetchModels);
     document.getElementById('refreshUsage').addEventListener('click', fetchUsage);
-
-    // ============ Forwarding Rules Logic ============
-    let editingModel = null;
-
-    async function fetchForwardingRules() {
-      try {
-        const res = await fetch(API_BASE + '/model-overrides');
-        const data = await res.json();
-        renderForwardingRules(data.overrides || {});
-      } catch (e) {
-        document.getElementById('forwardingList').innerHTML = '<div class="empty-state">Failed to load forwarding rules</div>';
-      }
-    }
-
-    function renderForwardingRules(overrides) {
-      const container = document.getElementById('forwardingList');
-      const entries = Object.entries(overrides);
-      if (entries.length === 0) {
-        container.innerHTML = '<div class="empty-state">No forwarding rules configured. Click "Add Rule" to forward model requests to external APIs.</div>';
-        return;
-      }
-      container.innerHTML = '<div class="account-list">' + entries.map(([model, config]) =>
-        '<div class="account-item">' +
-          '<div class="account-info" style="flex:2">' +
-            '<div class="account-name">' + model + '</div>' +
-            '<div class="account-type" style="word-break:break-all">' + config.targetUrl + '</div>' +
-            (config.modelMapping ? '<div class="account-type">-> ' + config.modelMapping + '</div>' : '') +
-          '</div>' +
-          '<div style="display:flex;gap:0.5rem">' +
-            '<button class="btn btn-sm" onclick="editForwardingRule(\\'' + model + '\\')">Edit</button>' +
-            '<button class="btn btn-sm btn-danger" onclick="deleteForwardingRule(\\'' + model + '\\')">Delete</button>' +
-          '</div>' +
-        '</div>'
-      ).join('') + '</div>';
-    }
-
-    function showForwardingForm(show, isEdit) {
-      document.getElementById('forwardingForm').style.display = show ? 'block' : 'none';
-      document.getElementById('forwardingFormTitle').textContent = isEdit ? 'Edit Forwarding Rule' : 'Add Forwarding Rule';
-      if (!show) {
-        editingModel = null;
-        document.getElementById('fwdModel').value = '';
-        document.getElementById('fwdTargetUrl').value = '';
-        document.getElementById('fwdModelMapping').value = '';
-        document.getElementById('fwdApiKey').value = '';
-        document.getElementById('fwdModel').disabled = false;
-      }
-    }
-
-    async function editForwardingRule(model) {
-      try {
-        const res = await fetch(API_BASE + '/model-overrides');
-        const data = await res.json();
-        const config = data.overrides && data.overrides[model];
-        if (config) {
-          editingModel = model;
-          document.getElementById('fwdModel').value = model;
-          document.getElementById('fwdModel').disabled = true;
-          document.getElementById('fwdTargetUrl').value = config.targetUrl || '';
-          document.getElementById('fwdModelMapping').value = config.modelMapping || '';
-          document.getElementById('fwdApiKey').value = '';
-          showForwardingForm(true, true);
-        }
-      } catch (e) { alert('Failed to load rule'); }
-    }
-
-    async function saveForwardingRule() {
-      const model = document.getElementById('fwdModel').value.trim();
-      const targetUrl = document.getElementById('fwdTargetUrl').value.trim();
-      const modelMapping = document.getElementById('fwdModelMapping').value.trim();
-      const apiKey = document.getElementById('fwdApiKey').value;
-
-      if (!model || !targetUrl) {
-        alert('Model name and Target URL are required');
-        return;
-      }
-
-      const body = { targetUrl: targetUrl };
-      if (modelMapping) body.modelMapping = modelMapping;
-      if (apiKey) body.apiKey = apiKey;
-
-      try {
-        const res = await fetch(API_BASE + '/model-overrides/' + encodeURIComponent(model), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        if (res.ok) {
-          showForwardingForm(false);
-          fetchForwardingRules();
-        } else {
-          const data = await res.json();
-          alert(data.error && data.error.message || 'Failed to save rule');
-        }
-      } catch (e) { alert('Failed to save rule'); }
-    }
-
-    async function deleteForwardingRule(model) {
-      if (!confirm('Delete forwarding rule for "' + model + '"?')) return;
-      try {
-        const res = await fetch(API_BASE + '/model-overrides/' + encodeURIComponent(model), { method: 'DELETE' });
-        if (res.ok) fetchForwardingRules();
-        else alert('Failed to delete rule');
-      } catch (e) { alert('Failed to delete rule'); }
-    }
-
-    document.getElementById('addForwardingBtn').addEventListener('click', function() { showForwardingForm(true, false); });
-    document.getElementById('cancelForwarding').addEventListener('click', function() { showForwardingForm(false); });
-    document.getElementById('saveForwarding').addEventListener('click', saveForwardingRule);
 
     fetchAccounts();
     fetchStatus();

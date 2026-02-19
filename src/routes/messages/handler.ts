@@ -3,7 +3,7 @@ import type { Context } from "hono"
 import consola from "consola"
 import { streamSSE } from "hono/streaming"
 
-import { getModelOverride, getSmallModel } from "~/lib/config"
+import { getSmallModel } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
@@ -28,7 +28,6 @@ import {
   type ResponsesResult,
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
-import { createForwardedAnthropicCompletion } from "~/services/forwarding/create-anthropic-completion"
 
 import {
   type AnthropicMessagesPayload,
@@ -50,13 +49,6 @@ export async function handleCompletion(c: Context) {
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   consola.info(`[Request] model: ${anthropicPayload.model}`)
   logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
-
-  // Check for model forwarding override (Anthropic protocol)
-  const override = getModelOverride(anthropicPayload.model)
-  if (override) {
-    consola.info(`[Forward] ${anthropicPayload.model} -> ${override.targetUrl}`)
-    return await handleForwardedRequest(c, anthropicPayload, override)
-  }
 
   // fix claude code 2.0.28+ warmup request consume premium request, forcing small model if no tools are used
   // set "CLAUDE_CODE_SUBAGENT_MODEL": "you small model" also can avoid this
@@ -144,38 +136,6 @@ const handleWithChatCompletions = async (
       }
     }
   })
-}
-
-const handleForwardedRequest = async (
-  c: Context,
-  anthropicPayload: AnthropicMessagesPayload,
-  override: import("~/lib/config").ModelOverride,
-) => {
-  const response = await createForwardedAnthropicCompletion(
-    override,
-    anthropicPayload,
-  )
-
-  if (anthropicPayload.stream && isAsyncIterable(response)) {
-    logger.debug("Streaming response from forwarded API")
-    return streamSSE(c, async (stream) => {
-      for await (const event of response as AsyncIterable<{
-        event: string
-        data?: string
-      }>) {
-        const eventName = event.event
-        const data = event.data ?? ""
-        logger.debug("Forwarded stream event:", data)
-        await stream.writeSSE({
-          event: eventName,
-          data,
-        })
-      }
-    })
-  }
-
-  logger.debug("Non-streaming response from forwarded API")
-  return c.json(response)
 }
 
 const handleWithResponsesApi = async (
