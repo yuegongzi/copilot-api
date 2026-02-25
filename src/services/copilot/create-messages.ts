@@ -14,7 +14,10 @@ import { fetchCopilotWithRetry } from "~/services/copilot/request"
 export type MessagesStream = ReturnType<typeof events>
 export type CreateMessagesReturn = AnthropicResponse | MessagesStream
 
-const SUPPORTED_BETA_FEATURES = new Set(["advanced-tool-use-2025-11-20"])
+const SUPPORTED_BETA_FEATURES = new Set([
+  "advanced-tool-use-2025-11-20",
+  "interleaved-thinking-2025-05-14",
+])
 
 function filterBetaHeader(header: string): string | undefined {
   const supported = header
