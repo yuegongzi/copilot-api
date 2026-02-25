@@ -224,11 +224,19 @@ const handleWithResponsesApi = async (
   return c.json(anthropicResponse)
 }
 
+const stripThinkingBlocks = (payload: AnthropicMessagesPayload): void => {
+  for (const msg of payload.messages) {
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue
+    msg.content = msg.content.filter((block) => block.type !== "thinking")
+  }
+}
+
 const handleWithMessagesApi = async (
   c: Context,
   anthropicPayload: AnthropicMessagesPayload,
   anthropicBetaHeader?: string,
 ) => {
+  stripThinkingBlocks(anthropicPayload)
   const response = await createMessages(anthropicPayload, anthropicBetaHeader)
 
   if (isAsyncIterable(response)) {
