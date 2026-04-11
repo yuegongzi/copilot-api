@@ -7,15 +7,19 @@
 
 services:
   copilot-api:
-    image: ghcr.io/yuegongzi/copilot-api:latest
-    container_name: copilot-api
+    image: ${IMAGE:-ghcr.io/yuegongzi/copilot-api:latest}
+    container_name: ${CONTAINER_NAME:-copilot-api}
     ports:
-      - "4141:4141"
+      # Publish to localhost only so admin and token stay off the LAN.
+      - "127.0.0.1:${HOST_PORT:-4141}:${PORT:-4141}"
     volumes:
       # Persist account configuration
       - copilot-data:/data
     environment:
-      - PORT=4141
+      - PORT=${PORT:-4141}
+      - HOST=0.0.0.0
+      - LOCAL_ACCESS_MODE=container-bridge
+      - LOCAL_ACCESS_PASSWORD=${LOCAL_ACCESS_PASSWORD:?Set LOCAL_ACCESS_PASSWORD in your shell or .env before running docker compose up}
       # Optional: Enable verbose logging
       # - VERBOSE=true
       # Optional: Rate limit (seconds between requests)
@@ -23,7 +27,7 @@ services:
       # - RATE_LIMIT_WAIT=true
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4141/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:${PORT:-4141}/"]
       interval: 30s
       timeout: 5s
       retries: 3

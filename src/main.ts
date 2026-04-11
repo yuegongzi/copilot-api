@@ -6,6 +6,12 @@ import { serve, type ServerHandler } from "srvx"
 import { getActiveAccount } from "./lib/accounts"
 import { mergeConfigWithDefaults } from "./lib/config"
 import { copilotTokenManager } from "./lib/copilot-token-manager"
+import {
+  getLocalAccessPassword,
+  getLocalAccessUsername,
+  getServerHost,
+  LOCAL_ACCESS_MODE,
+} from "./lib/local-security"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
 import { state } from "./lib/state"
@@ -69,6 +75,19 @@ async function main(): Promise<void> {
   }
 
   const serverUrl = `http://localhost:${PORT}`
+  const serverHost = getServerHost()
+
+  if (process.env.LOCAL_ACCESS_MODE === LOCAL_ACCESS_MODE.CONTAINER_BRIDGE) {
+    if (!getLocalAccessPassword()) {
+      throw new Error(
+        "LOCAL_ACCESS_PASSWORD is required when LOCAL_ACCESS_MODE=container-bridge",
+      )
+    }
+
+    consola.warn(
+      `LOCAL_ACCESS_MODE=container-bridge is only safe when the host port is published to 127.0.0.1 and protected with Basic auth username "${getLocalAccessUsername()}".`,
+    )
+  }
 
   consola.box(`copilot-api server\n\n📋 Account Manager: ${serverUrl}/admin`)
 
@@ -77,6 +96,7 @@ async function main(): Promise<void> {
   serve({
     fetch: server.fetch as ServerHandler,
     port: PORT,
+    hostname: serverHost,
     bun: {
       idleTimeout: 0,
     },

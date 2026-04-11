@@ -30,3 +30,6 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Docker localhost smoke
+        run: bash ./scripts/docker-local-smoke.sh

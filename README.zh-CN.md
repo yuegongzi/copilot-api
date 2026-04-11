@@ -138,6 +138,9 @@ sequenceDiagram
 ### 使用 Docker Compose（推荐）
 
 ```bash
+# 先设置一个真正的密码（或写到本地 .env 文件里）
+export LOCAL_ACCESS_PASSWORD="$(openssl rand -base64 24)"
+
 # 启动服务器
 docker compose up -d
 
@@ -147,16 +150,25 @@ docker compose logs -f
 
 然后访问 **http://localhost:4141/admin** 添加您的 GitHub 账户。
 
+提供的 Docker 配置会把 `4141` 端口只发布到 **localhost**。这是刻意为之：`/admin` 和 `/token` 是本地管理入口，不应该暴露到局域网。
+
 ### 使用 Docker Run
 
 ```bash
+export LOCAL_ACCESS_PASSWORD="$(openssl rand -base64 24)"
+
 docker run -d \
   --name copilot-api \
-  -p 4141:4141 \
+  -p 127.0.0.1:4141:4141 \
+  -e HOST=0.0.0.0 \
+  -e LOCAL_ACCESS_MODE=container-bridge \
+  -e LOCAL_ACCESS_PASSWORD="${LOCAL_ACCESS_PASSWORD}" \
   -v copilot-data:/data \
   --restart unless-stopped \
   ghcr.io/yuegongzi/copilot-api:latest
 ```
+
+`LOCAL_ACCESS_MODE=container-bridge` 是专门为“只发布到 localhost 的 Docker 用法”准备的显式开关。不要把它和 `-p 4141:4141` 或任何非 localhost 的端口发布方式一起使用。启用后，`/admin` 和 `/token` 还会额外要求 HTTP Basic Auth，用户名固定为 `copilot`，密码来自 `LOCAL_ACCESS_PASSWORD`。
 
 ## 账户设置
 
@@ -179,6 +191,9 @@ docker run -d \
 | 变量 | 默认值 | 描述 |
 |------|--------|------|
 | `PORT` | `4141` | 服务器端口 |
+| `HOST` | `127.0.0.1` | HTTP 监听地址。只有在确实需要容器端口发布时才设置为 `0.0.0.0` |
+| `LOCAL_ACCESS_MODE` | `loopback` | `/admin` 和 `/token` 的访问策略。只有在容器端口发布到宿主机 `127.0.0.1` 时才使用 `container-bridge` |
+| `LOCAL_ACCESS_PASSWORD` | - | 当 `LOCAL_ACCESS_MODE=container-bridge` 时必填。作为 `/admin` 和 `/token` 的 HTTP Basic Auth 密码，用户名固定为 `copilot` |
 | `VERBOSE` | `false` | 启用详细日志（也接受 `DEBUG=true`） |
 | `RATE_LIMIT` | - | 请求之间的最小间隔秒数 |
 | `RATE_LIMIT_WAIT` | `false` | 达到速率限制时等待而不是返回错误 |
@@ -193,11 +208,14 @@ services:
     image: ghcr.io/yuegongzi/copilot-api:latest
     container_name: copilot-api
     ports:
-      - "4141:4141"
+      - "127.0.0.1:4141:4141"
     volumes:
       - copilot-data:/data
     environment:
       - PORT=4141
+      - HOST=0.0.0.0
+      - LOCAL_ACCESS_MODE=container-bridge
+      - LOCAL_ACCESS_PASSWORD=${LOCAL_ACCESS_PASSWORD:?请先在 shell 或 .env 中设置}
       - VERBOSE=true
       - RATE_LIMIT=5
       - RATE_LIMIT_WAIT=true

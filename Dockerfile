@@ -33,7 +33,7 @@ ENV XDG_DATA_HOME=/data
 EXPOSE 4141
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --spider -q http://localhost:4141/ || exit 1
+  CMD wget --spider -q http://127.0.0.1:${PORT:-4141}/ || exit 1
 
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

@@ -301,6 +301,14 @@ export const adminHtml = `<!DOCTYPE html>
   <script>
     const API_BASE = '/admin/api';
     let pollInterval = null;
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -398,12 +406,12 @@ export const adminHtml = `<!DOCTYPE html>
         return;
       }
       list.innerHTML = data.accounts.map(acc => '<li class="account-item ' + (acc.isActive ? 'active' : '') + '">' +
-        '<img class="account-avatar" src="' + (acc.avatarUrl || '') + '" alt="" onerror="this.style.display=\\'none\\'">' +
-        '<div class="account-info"><div class="account-name">' + acc.login + '</div><div class="account-type">' + acc.accountType + '</div></div>' +
+        '<img class="account-avatar" src="' + escHtml(acc.avatarUrl || '') + '" alt="" onerror="this.style.display=\\'none\\'">' +
+        '<div class="account-info"><div class="account-name">' + escHtml(acc.login) + '</div><div class="account-type">' + escHtml(acc.accountType) + '</div></div>' +
         (acc.isActive ? '<span class="account-badge">Active</span>' : '') +
         '<div class="account-actions">' +
-        (!acc.isActive ? '<button class="btn btn-sm" onclick="switchAccount(\\'' + acc.id + '\\')">Switch</button>' : '') +
-        '<button class="btn btn-sm btn-danger" onclick="deleteAccount(\\'' + acc.id + '\\', \\'' + acc.login + '\\')">Delete</button>' +
+        (!acc.isActive ? '<button class="btn btn-sm" data-action="switch" data-id="' + escHtml(acc.id) + '">Switch</button>' : '') +
+        '<button class="btn btn-sm btn-danger" data-action="delete-account" data-id="' + escHtml(acc.id) + '" data-login="' + escHtml(acc.login) + '">Delete</button>' +
         '</div></li>').join('');
     }
     async function switchAccount(id) {
@@ -441,7 +449,7 @@ export const adminHtml = `<!DOCTYPE html>
       }
       container.innerHTML = data.data.map(model => {
         const isPremium = model.id.includes('o1') || model.id.includes('o3') || model.id.includes('claude');
-        return '<div class="model-card"><div class="model-name">' + model.id + '</div><div class="model-id">' + (model.object || 'model') + '</div>' +
+        return '<div class="model-card"><div class="model-name">' + escHtml(model.id) + '</div><div class="model-id">' + escHtml(model.object || 'model') + '</div>' +
           (isPremium ? '<span class="model-badge premium">Premium</span>' : '') + '</div>';
       }).join('');
     }
@@ -545,6 +553,19 @@ export const adminHtml = `<!DOCTYPE html>
     document.getElementById('refreshModels').addEventListener('click', fetchModels);
     document.getElementById('refreshUsage').addEventListener('click', fetchUsage);
     document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+    document.addEventListener('click', (e) => {
+      if (!(e.target instanceof Element)) return;
+      const actionEl = e.target.closest('[data-action]');
+      if (!actionEl) return;
+      const { action, id, login, from } = actionEl.dataset;
+      if (action === 'switch' && id) {
+        switchAccount(id);
+      } else if (action === 'delete-account' && id) {
+        deleteAccount(id, login || '');
+      } else if (action === 'delete-mapping' && from) {
+        deleteMapping(from);
+      }
+    });
 
     fetchAccounts();
     fetchStatus();
@@ -569,9 +590,9 @@ export const adminHtml = `<!DOCTYPE html>
       }
       tbody.innerHTML = entries.map(([from, to]) =>
         '<tr style="border-bottom:1px solid #21262d;">' +
-        '<td style="padding:0.5rem 1rem; font-family:monospace;">' + from + '</td>' +
-        '<td style="padding:0.5rem 1rem; font-family:monospace;">' + to + '</td>' +
-        '<td style="padding:0.5rem 1rem;"><button class="btn btn-danger btn-sm" onclick="deleteMapping(\\''+from+'\\')">Delete</button></td>' +
+        '<td style="padding:0.5rem 1rem; font-family:monospace;">' + escHtml(from) + '</td>' +
+        '<td style="padding:0.5rem 1rem; font-family:monospace;">' + escHtml(to) + '</td>' +
+        '<td style="padding:0.5rem 1rem;"><button class="btn btn-danger btn-sm" data-action="delete-mapping" data-from="' + escHtml(from) + '">Delete</button></td>' +
         '</tr>'
       ).join('');
     }
@@ -590,7 +611,7 @@ export const adminHtml = `<!DOCTYPE html>
         const res = await fetch('/v1/models');
         const data = await res.json();
         sel.innerHTML = '<option value="">Select target model</option>' +
-          (data.data || []).map(m => '<option value="' + m.id + '">' + m.id + '</option>').join('');
+          (data.data || []).map(m => '<option value="' + escHtml(m.id) + '">' + escHtml(m.id) + '</option>').join('');
       } catch (e) {
         sel.innerHTML = '<option value="">Failed to load models</option>';
       }

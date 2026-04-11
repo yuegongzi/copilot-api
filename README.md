@@ -138,6 +138,9 @@ sequenceDiagram
 ### Using Docker Compose (Recommended)
 
 ```bash
+# Set a real password first (or put it in a local .env file)
+export LOCAL_ACCESS_PASSWORD="$(openssl rand -base64 24)"
+
 # Start the server
 docker compose up -d
 
@@ -147,16 +150,25 @@ docker compose logs -f
 
 Then visit **http://localhost:4141/admin** to add your GitHub account.
 
+The provided Docker setup publishes port `4141` to **localhost only**. This is intentional: `/admin` and `/token` are local-management surfaces and should not be exposed to your LAN.
+
 ### Using Docker Run
 
 ```bash
+export LOCAL_ACCESS_PASSWORD="$(openssl rand -base64 24)"
+
 docker run -d \
   --name copilot-api \
-  -p 4141:4141 \
+  -p 127.0.0.1:4141:4141 \
+  -e HOST=0.0.0.0 \
+  -e LOCAL_ACCESS_MODE=container-bridge \
+  -e LOCAL_ACCESS_PASSWORD="${LOCAL_ACCESS_PASSWORD}" \
   -v copilot-data:/data \
   --restart unless-stopped \
   ghcr.io/yuegongzi/copilot-api:latest
 ```
+
+`LOCAL_ACCESS_MODE=container-bridge` is an explicit opt-in for this localhost-published Docker pattern. Do not combine it with `-p 4141:4141` or any other non-localhost publish target. When enabled, `/admin` and `/token` also require HTTP Basic auth with username `copilot` and the password from `LOCAL_ACCESS_PASSWORD`.
 
 ## Account Setup
 
@@ -179,6 +191,9 @@ The admin panel allows you to:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4141` | Server port |
+| `HOST` | `127.0.0.1` | Bind address for the HTTP listener. Set to `0.0.0.0` only when you intentionally need container port publishing |
+| `LOCAL_ACCESS_MODE` | `loopback` | Access policy for `/admin` and `/token`. Use `container-bridge` only when the container port is published to `127.0.0.1` on the host |
+| `LOCAL_ACCESS_PASSWORD` | - | Required when `LOCAL_ACCESS_MODE=container-bridge`. Used as the HTTP Basic auth password for `/admin` and `/token` with username `copilot` |
 | `VERBOSE` | `false` | Enable verbose logging (also accepts `DEBUG=true`) |
 | `RATE_LIMIT` | - | Minimum seconds between requests |
 | `RATE_LIMIT_WAIT` | `false` | Wait instead of error when rate limit is hit |
@@ -193,11 +208,14 @@ services:
     image: ghcr.io/yuegongzi/copilot-api:latest
     container_name: copilot-api
     ports:
-      - "4141:4141"
+      - "127.0.0.1:4141:4141"
     volumes:
       - copilot-data:/data
     environment:
       - PORT=4141
+      - HOST=0.0.0.0
+      - LOCAL_ACCESS_MODE=container-bridge
+      - LOCAL_ACCESS_PASSWORD=${LOCAL_ACCESS_PASSWORD:?Set this in your shell or .env}
       - VERBOSE=true
       - RATE_LIMIT=5
       - RATE_LIMIT_WAIT=true
