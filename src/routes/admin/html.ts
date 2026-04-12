@@ -4,6 +4,7 @@ export const adminHtml = `<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Copilot API - Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23161b22'/%3E%3Cpath fill='%2358a6ff' d='M8 2a4 4 0 0 1 4 4v1.5h1A1.5 1.5 0 0 1 14.5 9v3A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V9A1.5 1.5 0 0 1 3 7.5h1V6a4 4 0 0 1 4-4Zm0 1.5A2.5 2.5 0 0 0 5.5 6v1.5h5V6A2.5 2.5 0 0 0 8 3.5Z'/%3E%3C/svg%3E">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -251,7 +252,8 @@ export const adminHtml = `<!DOCTYPE html>
           <div style="display:flex; gap:0.5rem; align-items:center;">
             <input class="select" id="mappingFrom" placeholder="From model" style="margin:0; flex:1;">
             <span style="color:#8b949e; font-size:1.2rem;">\u2192</span>
-            <select class="select" id="mappingTo" style="margin:0; flex:1;"><option value="">Loading models...</option></select>
+            <input class="select" id="mappingTo" list="mappingToOptions" placeholder="Target model" style="margin:0; flex:1;">
+            <datalist id="mappingToOptions"></datalist>
             <button class="btn btn-primary btn-sm" id="saveMappingBtn">Save</button>
             <button class="btn btn-sm" id="cancelMappingBtn">Cancel</button>
           </div>
@@ -301,6 +303,11 @@ export const adminHtml = `<!DOCTYPE html>
   <script>
     const API_BASE = '/admin/api';
     let pollInterval = null;
+    let authStatus = {
+      authenticated: false,
+      hasAccounts: false,
+      activeAccount: null,
+    };
     function escHtml(s) {
       return String(s)
         .replace(/&/g, '&amp;')
@@ -308,6 +315,24 @@ export const adminHtml = `<!DOCTYPE html>
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+    }
+    function renderCardEmptyState(elementId, message) {
+      document.getElementById(elementId).innerHTML = '<div class="empty-state">' + escHtml(message) + '</div>';
+    }
+    function getModelsUnavailableMessage() {
+      return authStatus.hasAccounts
+        ? 'Reconnect the active GitHub account to load models.'
+        : 'Add a GitHub account to load models.';
+    }
+    function getUsageUnavailableMessage() {
+      return authStatus.hasAccounts
+        ? 'Reconnect the active GitHub account to load usage data.'
+        : 'Add a GitHub account to load usage data.';
+    }
+    function getModelSuggestionPlaceholder() {
+      return authStatus.hasAccounts
+        ? 'Target model (reconnect account to load suggestions)'
+        : 'Target model (add account to load suggestions)';
     }
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -386,17 +411,29 @@ export const adminHtml = `<!DOCTYPE html>
       try {
         const res = await fetch(API_BASE + '/auth/status');
         const data = await res.json();
+        authStatus = {
+          authenticated: Boolean(data.authenticated),
+          hasAccounts: Boolean(data.hasAccounts),
+          activeAccount: data.activeAccount || null,
+        };
         const dot = document.getElementById('statusDot');
         const text = document.getElementById('statusText');
-        if (data.authenticated) {
+        if (authStatus.authenticated) {
           dot.classList.add('online');
-          text.textContent = 'Connected as ' + (data.activeAccount?.login || 'Unknown');
+          text.textContent = 'Connected as ' + (authStatus.activeAccount?.login || 'Unknown');
         } else {
           dot.classList.remove('online');
           text.textContent = 'Not authenticated';
         }
+        return authStatus;
       } catch (e) {
+        authStatus = {
+          authenticated: false,
+          hasAccounts: false,
+          activeAccount: null,
+        };
         document.getElementById('statusText').textContent = 'Connection error';
+        return authStatus;
       }
     }
     function renderAccounts(data) {
@@ -434,11 +471,17 @@ export const adminHtml = `<!DOCTYPE html>
       const btn = document.getElementById('refreshModels');
       btn.classList.add('loading');
       try {
+        const status = await fetchStatus();
+        if (!status.authenticated) {
+          renderCardEmptyState('modelsList', getModelsUnavailableMessage());
+          return;
+        }
         const res = await fetch('/v1/models');
+        if (!res.ok) throw new Error('Failed to load models');
         const data = await res.json();
         renderModels(data);
       } catch (e) {
-        document.getElementById('modelsList').innerHTML = '<div class="empty-state">Failed to load models. Please add an account first.</div>';
+        renderCardEmptyState('modelsList', 'Failed to load models. Please try again.');
       } finally { btn.classList.remove('loading'); }
     }
     function renderModels(data) {
@@ -457,11 +500,17 @@ export const adminHtml = `<!DOCTYPE html>
       const btn = document.getElementById('refreshUsage');
       btn.classList.add('loading');
       try {
+        const status = await fetchStatus();
+        if (!status.authenticated) {
+          renderCardEmptyState('usageContent', getUsageUnavailableMessage());
+          return;
+        }
         const res = await fetch('/usage');
+        if (!res.ok) throw new Error('Failed to load usage');
         const data = await res.json();
         renderUsage(data);
       } catch (e) {
-        document.getElementById('usageContent').innerHTML = '<div class="empty-state">Failed to load usage data. Please add an account first.</div>';
+        renderCardEmptyState('usageContent', 'Failed to load usage data. Please try again.');
       } finally { btn.classList.remove('loading'); }
     }
     function renderUsage(data) {
@@ -606,14 +655,25 @@ export const adminHtml = `<!DOCTYPE html>
     }
     window.deleteMapping = deleteMapping;
     async function loadModelOptions() {
-      const sel = document.getElementById('mappingTo');
+      const input = document.getElementById('mappingTo');
+      const optionList = document.getElementById('mappingToOptions');
+      input.value = '';
+      optionList.innerHTML = '';
       try {
+        const status = await fetchStatus();
+        if (!status.authenticated) {
+          input.placeholder = getModelSuggestionPlaceholder();
+          return;
+        }
         const res = await fetch('/v1/models');
+        if (!res.ok) throw new Error('Failed to load model suggestions');
         const data = await res.json();
-        sel.innerHTML = '<option value="">Select target model</option>' +
-          (data.data || []).map(m => '<option value="' + escHtml(m.id) + '">' + escHtml(m.id) + '</option>').join('');
+        input.placeholder = 'Target model';
+        optionList.innerHTML = (data.data || [])
+          .map(m => '<option value="' + escHtml(m.id) + '"></option>')
+          .join('');
       } catch (e) {
-        sel.innerHTML = '<option value="">Failed to load models</option>';
+        input.placeholder = 'Target model (failed to load suggestions)';
       }
     }
     document.getElementById('addMappingBtn').addEventListener('click', () => {

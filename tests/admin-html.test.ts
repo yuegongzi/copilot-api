@@ -25,4 +25,19 @@ describe("adminHtml hardening", () => {
     expect(adminHtml).not.toContain('onclick="deleteAccount')
     expect(adminHtml).not.toContain('onclick="deleteMapping')
   })
+
+  test("avoids unauthenticated resource fetch noise and keeps manual mapping entry available", () => {
+    expect(adminHtml).toContain('rel="icon"')
+    expect(adminHtml).toContain("let authStatus =")
+    expect(adminHtml).toContain("const status = await fetchStatus();")
+    expect(adminHtml).toContain("Add a GitHub account to load models.")
+    expect(adminHtml).toContain("Add a GitHub account to load usage data.")
+    expect(adminHtml).toContain(
+      'id="mappingTo" list="mappingToOptions" placeholder="Target model"',
+    )
+    expect(adminHtml).toContain('<datalist id="mappingToOptions"></datalist>')
+    expect(adminHtml).toContain(
+      "Target model (add account to load suggestions)",
+    )
+  })
 })
