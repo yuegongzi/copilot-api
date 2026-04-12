@@ -6,6 +6,8 @@
 
 ---
 
+Automated implementation, linting, typechecking, and test verification are complete. The admin UI smoke has also been re-run locally in the unauthenticated loopback setup, covering empty states plus model mapping create/delete.
+
 ## Task List
 
 ### P0 — Network-Level Fixes (Do first, independent of each other except Task 2)
@@ -98,7 +100,7 @@
 - [x] `bun run typecheck` passes on the final tree
 - [x] `bun run lint` passes on the final tree
 - [x] `bun test` passes (no regressions)
-- [ ] Manual admin UI smoke test: account list, model list, mapping CRUD all work correctly
+- [x] Manual admin UI smoke test: account list, model list, mapping CRUD all work correctly
 
 ## Sequencing
 

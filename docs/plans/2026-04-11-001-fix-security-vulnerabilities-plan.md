@@ -14,6 +14,8 @@ The full-codebase security audit (2026-04-11) identified 5 high-confidence explo
 
 All fixes are server-side or template-level changes. No external dependencies are added.
 
+Automated verification is complete, and the admin UI smoke has been re-run locally: accounts empty state, models empty state, usage empty state, and model mapping create/delete all work without console errors in the unauthenticated loopback setup.
+
 ## Problem Frame
 
 copilot-api is a local proxy that forwards GitHub Copilot API requests from tools like Claude Code. It exposes an admin UI and a `/token` endpoint that carry real credentials. The server was designed to be localhost-only, but the current implementation allows remote attackers to bypass that restriction and steal live Copilot tokens or execute JavaScript in the admin panel. See `docs/reports/2026-04-11-security-audit.md` for full exploit paths and confidence scores.
