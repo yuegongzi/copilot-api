@@ -302,6 +302,40 @@ If you want Claude Code to inject an extra marker during the `SubagentStart` hoo
 
 This plugin is only a lightweight hook helper. It does not start or manage the `copilot-api` service itself, which should still be deployed separately via Docker as described above.
 
+## Using with Codex CLI
+
+[Codex CLI](https://github.com/openai/codex) can use this proxy via the Responses API (`/v1/responses`) on localhost.
+
+### Prerequisites
+
+1. Start the proxy and add your GitHub account through `/admin` as described above.
+2. Open `/admin` > **Model Mappings** and map any model alias Codex will use (e.g. `o4-mini`, `gpt-4.1`) to the actual Copilot model you want.
+
+### Configuration
+
+Create (or edit) `~/.codex/config.toml`:
+
+```toml
+# Point Codex at the local proxy
+model = "o4-mini"
+provider = "openai"
+
+[providers.openai]
+name = "copilot-api"
+base_url = "http://localhost:4141/v1"
+wire_api = "responses"
+
+# The proxy does not use API keys; any non-empty value works.
+api_key = "copilot"
+```
+
+### Scope and limitations
+
+- **Auth is proxy-side, not per-client.** Authentication is managed through `/admin`; the `api_key` field in `config.toml` is ignored by the proxy but required by Codex.
+- **Intended for localhost only.** Do not expose the proxy to an untrusted network.
+- **Built-in Responses tools** such as `local_shell`, `web_search`, `file_search`, `code_interpreter`, and `image_generation` are forwarded to upstream if the model supports them.
+- **Some proprietary tool contracts may be unsupported.** Tools that depend on client-specific schemas or execution semantics not supported by Copilot upstream may fail silently or return errors.
+
 ## Configuration (config.json)
 
 The configuration file is stored at `/data/copilot-api/config.json` inside the container (persisted via Docker volume).

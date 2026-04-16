@@ -302,6 +302,40 @@ volumes:
 
 这个插件只是一个轻量 hook 辅助层，不负责启动或管理 `copilot-api` 服务本身。服务端仍然建议按本文档中的 Docker 方式部署。
 
+## 与 Codex CLI 配合使用
+
+[Codex CLI](https://github.com/openai/codex) 可以通过本代理的 Responses API（`/v1/responses`）在本地使用。
+
+### 前置条件
+
+1. 按照上文所述启动代理并通过 `/admin` 添加 GitHub 账户。
+2. 打开 `/admin` > **Model Mappings**，将 Codex 使用的模型别名（如 `o4-mini`、`gpt-4.1`）映射到实际的 Copilot 模型。
+
+### 配置
+
+创建或编辑 `~/.codex/config.toml`：
+
+```toml
+# 将 Codex 指向本地代理
+model = "o4-mini"
+provider = "openai"
+
+[providers.openai]
+name = "copilot-api"
+base_url = "http://localhost:4141/v1"
+wire_api = "responses"
+
+# 代理不使用 API 密钥；填入任意非空值即可。
+api_key = "copilot"
+```
+
+### 范围与限制
+
+- **认证在代理端管理，而非按客户端配置。** 身份验证通过 `/admin` 完成；`config.toml` 中的 `api_key` 字段会被代理忽略，但 Codex 本身要求该字段不为空。
+- **仅适用于 localhost。** 请勿将代理暴露到不受信任的网络。
+- **Responses 内建工具**（如 `local_shell`、`web_search`、`file_search`、`code_interpreter`、`image_generation`）在模型支持的情况下会被转发到上游。
+- **部分专有工具契约可能不受支持。** 依赖客户端自定义 schema 或 Copilot 上游不支持的执行语义的工具可能会静默失败或返回错误。
+
 ## 配置文件 (config.json)
 
 配置文件存储在容器内的 `/data/copilot-api/config.json`（通过 Docker volume 持久化）。

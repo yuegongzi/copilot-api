@@ -30,6 +30,19 @@ const FILE_EDITING_TOOL_NAMES = new Set([
   "multiedit",
 ])
 
+/**
+ * Built-in Responses tool types that upstream Copilot/OpenAI supports natively.
+ * These must survive filtering alongside "function" tools.
+ */
+const BUILTIN_RESPONSES_TOOL_TYPES = new Set([
+  "web_search",
+  "web_search_preview",
+  "file_search",
+  "code_interpreter",
+  "image_generation",
+  "local_shell",
+])
+
 interface CustomTool extends Record<string, unknown> {
   type: "custom"
   name: string
@@ -205,13 +218,18 @@ const getCustomToolParameters = (tool: {
   }
 
 /**
- * Filter out unsupported tool types for Copilot API
- * Copilot only supports "function" type tools
+ * Filter out unsupported tool types for Copilot API.
+ * Keeps "function" tools and known built-in Responses tool types;
+ * drops everything else (e.g. unknown custom types).
  */
 const filterUnsupportedTools = (payload: ResponsesPayload): void => {
   if (Array.isArray(payload.tools)) {
     const originalCount = payload.tools.length
-    payload.tools = payload.tools.filter((tool) => tool.type === "function")
+    payload.tools = payload.tools.filter(
+      (tool) =>
+        tool.type === "function"
+        || BUILTIN_RESPONSES_TOOL_TYPES.has(tool.type as string),
+    )
     const filteredCount = originalCount - payload.tools.length
     if (filteredCount > 0) {
       logger.debug(
