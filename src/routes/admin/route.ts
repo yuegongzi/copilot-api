@@ -2,6 +2,8 @@ import { Hono } from "hono"
 
 import {
   addAccount,
+  applyAccountToState,
+  clearAccountState,
   getAccounts,
   getActiveAccount,
   removeAccount,
@@ -11,6 +13,7 @@ import {
 import { getConfig, saveConfig } from "~/lib/config"
 import { copilotTokenManager } from "~/lib/copilot-token-manager"
 import { state } from "~/lib/state"
+import { cacheModels } from "~/lib/utils"
 import { getDeviceCode } from "~/services/github/get-device-code"
 import { getGitHubUser } from "~/services/github/get-user"
 import { pollAccessTokenOnce } from "~/services/github/poll-access-token"
@@ -80,15 +83,9 @@ adminRoutes.post("/api/accounts/:id/activate", async (c) => {
     )
   }
 
-  // Update state with new token
-  state.githubToken = account.token
-  state.accountType = account.accountType
+  const tokenOk = await applyAccountToState(account)
 
-  // Refresh Copilot token with new account
-  try {
-    copilotTokenManager.clear()
-    await copilotTokenManager.getToken()
-  } catch {
+  if (!tokenOk) {
     return c.json(
       {
         error: {
@@ -132,19 +129,9 @@ adminRoutes.delete("/api/accounts/:id", async (c) => {
   // If we removed the current account, update state
   const activeAccount = await getActiveAccount()
   if (activeAccount) {
-    state.githubToken = activeAccount.token
-    state.accountType = activeAccount.accountType
-
-    // Refresh Copilot token
-    try {
-      copilotTokenManager.clear()
-      await copilotTokenManager.getToken()
-    } catch {
-      // Ignore refresh errors on delete
-    }
+    await applyAccountToState(activeAccount)
   } else {
-    state.githubToken = undefined
-    copilotTokenManager.clear()
+    clearAccountState()
   }
 
   return c.json({ success: true })
@@ -219,16 +206,7 @@ async function createAccountFromToken(
   }
 
   await addAccount(account)
-
-  state.githubToken = token
-  state.accountType = account.accountType
-
-  try {
-    copilotTokenManager.clear()
-    await copilotTokenManager.getToken()
-  } catch {
-    // Continue even if Copilot token fails
-  }
+  await applyAccountToState(account)
 
   return { success: true, account }
 }
@@ -311,13 +289,230 @@ adminRoutes.post("/api/auth/poll", async (c) => {
   })
 })
 
+// Initiate device code flow for reconnecting an existing account
+adminRoutes.post("/api/auth/reconnect/device-code", async (c) => {
+  const body = await c.req.json<{ accountId: string }>()
+
+  if (!body.accountId) {
+    return c.json(
+      {
+        error: {
+          message: "accountId is required",
+          type: "validation_error",
+        },
+      },
+      400,
+    )
+  }
+
+  const data = await getAccounts()
+  const targetAccount = data.accounts.find((a) => a.id === body.accountId)
+
+  if (!targetAccount) {
+    return c.json(
+      {
+        error: {
+          message: "Account not found",
+          type: "not_found",
+        },
+      },
+      404,
+    )
+  }
+
+  try {
+    const response = await getDeviceCode()
+
+    return c.json({
+      deviceCode: response.device_code,
+      userCode: response.user_code,
+      verificationUri: response.verification_uri,
+      expiresIn: response.expires_in,
+      interval: response.interval,
+      targetAccount: {
+        id: targetAccount.id,
+        login: targetAccount.login,
+        accountType: targetAccount.accountType,
+      },
+    })
+  } catch {
+    return c.json(
+      {
+        error: {
+          message: "Failed to get device code",
+          type: "auth_error",
+        },
+      },
+      500,
+    )
+  }
+})
+
+interface ReconnectPollRequestBody {
+  deviceCode: string
+  accountId: string
+}
+
+// Poll for access token during reconnect flow
+/* eslint-disable require-atomic-updates */
+adminRoutes.post("/api/auth/reconnect/poll", async (c) => {
+  const body = await c.req.json<ReconnectPollRequestBody>()
+
+  if (!body.deviceCode || !body.accountId) {
+    return c.json(
+      {
+        error: {
+          message: "deviceCode and accountId are required",
+          type: "validation_error",
+        },
+      },
+      400,
+    )
+  }
+
+  // Look up the target account
+  const data = await getAccounts()
+  const targetAccount = data.accounts.find((a) => a.id === body.accountId)
+
+  if (!targetAccount) {
+    return c.json(
+      {
+        error: {
+          message: "Account not found",
+          type: "not_found",
+        },
+      },
+      404,
+    )
+  }
+
+  const result = await pollAccessTokenOnce(body.deviceCode)
+
+  if (result.status === "pending") {
+    return c.json({ pending: true, message: "Waiting for user authorization" })
+  }
+
+  if (result.status === "slow_down") {
+    return c.json({
+      pending: true,
+      slowDown: true,
+      interval: result.interval,
+      message: "Rate limited, please slow down",
+    })
+  }
+
+  if (result.status === "expired") {
+    return c.json(
+      {
+        error: {
+          message: "Device code expired. Please start over.",
+          type: "expired",
+        },
+      },
+      400,
+    )
+  }
+
+  if (result.status === "denied") {
+    return c.json(
+      {
+        error: {
+          message: "Authorization was denied by user.",
+          type: "denied",
+        },
+      },
+      400,
+    )
+  }
+
+  if (result.status === "error") {
+    return c.json({ error: { message: result.error, type: "auth_error" } }, 500)
+  }
+
+  // Verify the new token resolves to the same GitHub identity
+  const previousToken = state.githubToken
+  state.githubToken = result.token
+
+  let user
+  try {
+    user = await getGitHubUser()
+  } catch {
+    state.githubToken = previousToken
+    return c.json(
+      {
+        error: {
+          message: "Failed to verify GitHub identity",
+          type: "auth_error",
+        },
+      },
+      500,
+    )
+  }
+
+  if (user.id.toString() !== targetAccount.id) {
+    state.githubToken = previousToken
+    return c.json(
+      {
+        error: {
+          message: `Identity mismatch: expected ${targetAccount.login} but got ${user.login}. Log in with the correct GitHub account.`,
+          type: "identity_mismatch",
+        },
+      },
+      400,
+    )
+  }
+
+  // Update the account in place, preserving createdAt and accountType
+  const updatedAccount: Account = {
+    ...targetAccount,
+    token: result.token,
+    login: user.login,
+    avatarUrl: user.avatar_url,
+  }
+
+  await addAccount(updatedAccount)
+
+  // Set this account as active
+  await setActiveAccount(updatedAccount.id)
+
+  // Apply to runtime state and refresh
+  const tokenOk = await applyAccountToState(updatedAccount)
+
+  if (tokenOk) {
+    await cacheModels()
+  }
+
+  return c.json({
+    success: true,
+    account: {
+      id: updatedAccount.id,
+      login: updatedAccount.login,
+      avatarUrl: updatedAccount.avatarUrl,
+      accountType: updatedAccount.accountType,
+    },
+  })
+})
+/* eslint-enable require-atomic-updates */
+
 // Get current auth status
 adminRoutes.get("/api/auth/status", async (c) => {
   const activeAccount = await getActiveAccount()
 
+  const authenticated =
+    Boolean(state.githubToken) && copilotTokenManager.hasValidToken()
+
+  let authState: "no_account" | "connected" | "needs_reconnect"
+  if (!activeAccount) {
+    authState = "no_account"
+  } else if (authenticated) {
+    authState = "connected"
+  } else {
+    authState = "needs_reconnect"
+  }
+
   return c.json({
-    authenticated:
-      Boolean(state.githubToken) && copilotTokenManager.hasValidToken(),
+    authenticated,
+    authState,
     hasAccounts: Boolean(activeAccount),
     activeAccount:
       activeAccount ?

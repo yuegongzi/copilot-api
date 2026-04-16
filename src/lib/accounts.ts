@@ -1,12 +1,46 @@
 import consola from "consola"
 
 import { type AccountConfig, getConfig, saveConfig } from "./config"
+import { copilotTokenManager } from "./copilot-token-manager"
+import { state } from "./state"
 
 export type Account = AccountConfig
 
 interface AccountsData {
   activeAccountId: string | null
   accounts: Array<Account>
+}
+
+/**
+ * Apply an account's credentials to runtime state and refresh the Copilot token.
+ * Centralizes the pattern duplicated across startup, activate, reconnect, and add-account flows.
+ * Returns true when the Copilot token was refreshed successfully.
+ */
+export async function applyAccountToState(
+  account: Account,
+): Promise<boolean> {
+  state.githubToken = account.token
+  state.accountType = account.accountType
+
+  try {
+    copilotTokenManager.clear()
+    await copilotTokenManager.getToken()
+    return true
+  } catch (error) {
+    consola.warn(
+      `[applyAccountToState] Copilot token refresh failed for ${account.login}:`,
+      error,
+    )
+    return false
+  }
+}
+
+/**
+ * Clear runtime auth state (used when no valid account is available).
+ */
+export function clearAccountState(): void {
+  state.githubToken = undefined
+  copilotTokenManager.clear()
 }
 
 /**

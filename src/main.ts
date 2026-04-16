@@ -3,9 +3,8 @@
 import consola from "consola"
 import { serve, type ServerHandler } from "srvx"
 
-import { getActiveAccount } from "./lib/accounts"
+import { applyAccountToState, getActiveAccount } from "./lib/accounts"
 import { mergeConfigWithDefaults } from "./lib/config"
-import { copilotTokenManager } from "./lib/copilot-token-manager"
 import {
   getLocalAccessPassword,
   getLocalAccessUsername,
@@ -56,20 +55,24 @@ async function main(): Promise<void> {
   const activeAccount = await getActiveAccount()
 
   if (activeAccount) {
-    state.githubToken = activeAccount.token
-    state.accountType = activeAccount.accountType
     consola.info(`Logged in as ${activeAccount.login}`)
 
     if (state.showToken) {
       consola.info("GitHub token:", activeAccount.token)
     }
 
-    await copilotTokenManager.getToken()
-    await cacheModels()
+    const tokenOk = await applyAccountToState(activeAccount)
 
-    consola.info(
-      `Available models: \n${state.models?.data.map((model) => `- ${model.id}`).join("\n")}`,
-    )
+    if (tokenOk) {
+      await cacheModels()
+      consola.info(
+        `Available models: \n${state.models?.data.map((model) => `- ${model.id}`).join("\n")}`,
+      )
+    } else {
+      consola.warn(
+        `Account "${activeAccount.login}" needs reconnection. Visit /admin to reconnect.`,
+      )
+    }
   } else {
     consola.warn("No account configured. Visit /admin to add an account.")
   }

@@ -273,14 +273,20 @@ export const adminHtml = `<!DOCTYPE html>
   </div>
   <div class="modal-overlay" id="authModal">
     <div class="modal">
-      <h2 class="modal-title">Add GitHub Account</h2>
+      <h2 class="modal-title" id="authModalTitle">Add GitHub Account</h2>
       <div id="authStep1">
-        <label class="label">Account Type</label>
-        <select class="select" id="accountType">
-          <option value="individual">Individual</option>
-          <option value="business">Business</option>
-          <option value="enterprise">Enterprise</option>
-        </select>
+        <div id="accountTypeSection">
+          <label class="label">Account Type</label>
+          <select class="select" id="accountType">
+            <option value="individual">Individual</option>
+            <option value="business">Business</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+        <div id="reconnectInfo" style="display:none">
+          <p class="modal-text">Reconnecting as <strong id="reconnectLogin"></strong>.</p>
+          <p class="modal-text" style="font-size:0.8rem">Account type (<span id="reconnectAccountType"></span>) will be preserved. This account will become the active account on success.</p>
+        </div>
         <p class="modal-text">Click below to start the authorization process.</p>
         <div class="modal-actions">
           <button class="btn" id="cancelAuth">Cancel</button>
@@ -295,7 +301,7 @@ export const adminHtml = `<!DOCTYPE html>
         <div class="modal-actions"><button class="btn" id="cancelAuth2">Cancel</button></div>
       </div>
       <div id="authStep3" style="display:none">
-        <p class="modal-text" style="color:#238636">Account added successfully!</p>
+        <p class="modal-text" id="authSuccessText" style="color:#238636">Account added successfully!</p>
         <div class="modal-actions"><button class="btn btn-primary" id="closeAuth">Close</button></div>
       </div>
     </div>
@@ -303,8 +309,11 @@ export const adminHtml = `<!DOCTYPE html>
   <script>
     const API_BASE = '/admin/api';
     let pollInterval = null;
+    let authMode = 'add';
+    let reconnectAccountId = null;
     let authStatus = {
       authenticated: false,
+      authState: 'no_account',
       hasAccounts: false,
       activeAccount: null,
     };
@@ -413,22 +422,27 @@ export const adminHtml = `<!DOCTYPE html>
         const data = await res.json();
         authStatus = {
           authenticated: Boolean(data.authenticated),
+          authState: data.authState || 'no_account',
           hasAccounts: Boolean(data.hasAccounts),
           activeAccount: data.activeAccount || null,
         };
         const dot = document.getElementById('statusDot');
         const text = document.getElementById('statusText');
-        if (authStatus.authenticated) {
+        if (authStatus.authState === 'connected') {
           dot.classList.add('online');
           text.textContent = 'Connected as ' + (authStatus.activeAccount?.login || 'Unknown');
+        } else if (authStatus.authState === 'needs_reconnect') {
+          dot.classList.remove('online');
+          text.textContent = 'Account ' + (authStatus.activeAccount?.login || '') + ' needs reconnection';
         } else {
           dot.classList.remove('online');
-          text.textContent = 'Not authenticated';
+          text.textContent = 'No account configured';
         }
         return authStatus;
       } catch (e) {
         authStatus = {
           authenticated: false,
+          authState: 'no_account',
           hasAccounts: false,
           activeAccount: null,
         };
