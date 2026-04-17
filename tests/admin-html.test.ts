@@ -41,3 +41,31 @@ describe("adminHtml hardening", () => {
     )
   })
 })
+
+describe("adminHtml reconnect UI affordances", () => {
+  test("contains reconnect info section in the auth modal", () => {
+    expect(adminHtml).toContain('id="reconnectInfo"')
+    expect(adminHtml).toContain('id="reconnectLogin"')
+  })
+
+  test("contains modal title element for mode switching", () => {
+    expect(adminHtml).toContain('id="authModalTitle"')
+  })
+
+  test("contains success text element for mode-specific messaging", () => {
+    expect(adminHtml).toContain('id="authSuccessText"')
+  })
+
+  test("uses needs_reconnect auth state value in status bar logic", () => {
+    expect(adminHtml).toContain("'needs_reconnect'")
+  })
+
+  test("uses no_account auth state value distinct from needs_reconnect", () => {
+    expect(adminHtml).toContain("'no_account'")
+  })
+
+  test("renders distinct status bar messages for no_account and needs_reconnect states", () => {
+    expect(adminHtml).toContain("No account configured")
+    expect(adminHtml).toContain("needs reconnection")
+  })
+})
