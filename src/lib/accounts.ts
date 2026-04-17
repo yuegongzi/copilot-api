@@ -16,9 +16,7 @@ interface AccountsData {
  * Centralizes the pattern duplicated across startup, activate, reconnect, and add-account flows.
  * Returns true when the Copilot token was refreshed successfully.
  */
-export async function applyAccountToState(
-  account: Account,
-): Promise<boolean> {
+export async function applyAccountToState(account: Account): Promise<boolean> {
   state.githubToken = account.token
   state.accountType = account.accountType
 

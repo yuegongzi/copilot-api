@@ -214,7 +214,13 @@ describe("Responses handler tool filtering", () => {
     const { fetchMock, getBody } = captureFetchBody()
 
     const tools = [
-      { type: "function", name: "f1", description: "ok", parameters: {}, strict: false },
+      {
+        type: "function",
+        name: "f1",
+        description: "ok",
+        parameters: {},
+        strict: false,
+      },
       { type: "computer_use", display_width: 1024, display_height: 768 },
       { type: "completely_unknown" },
     ]
@@ -271,7 +277,11 @@ describe("Responses handler tool filtering", () => {
     for (const tool of sentTools) {
       expect(tool.type).toBe("function")
     }
-    expect(sentTools.map((t) => t.name)).toEqual(["write", "edit", "multi_edit"])
+    expect(sentTools.map((t) => t.name)).toEqual([
+      "write",
+      "edit",
+      "multi_edit",
+    ])
   })
 
   test("mixed tools: built-in survive, custom normalized, unknown dropped", async () => {
@@ -282,7 +292,13 @@ describe("Responses handler tool filtering", () => {
       { type: "web_search", search_context_size: "medium" },
       { type: "custom", name: "apply_patch", description: "Patch files" },
       { type: "custom", name: "write", description: "Write a file" },
-      { type: "function", name: "helper", description: "ok", parameters: {}, strict: false },
+      {
+        type: "function",
+        name: "helper",
+        description: "ok",
+        parameters: {},
+        strict: false,
+      },
       { type: "computer_use", display_width: 1024 },
       { type: "unknown_tool_type" },
     ]

@@ -353,8 +353,59 @@ interface ReconnectPollRequestBody {
   accountId: string
 }
 
+type ReconnectIdentityResult =
+  | {
+      success: true
+      user: {
+        avatarUrl: string
+        login: string
+      }
+    }
+  | {
+      success: false
+      message: string
+      type: "auth_error" | "identity_mismatch"
+    }
+
+async function verifyReconnectIdentity(
+  token: string,
+  targetAccount: Account,
+): Promise<ReconnectIdentityResult> {
+  const previousToken = state.githubToken
+  state.githubToken = token
+
+  try {
+    const user = await getGitHubUser()
+
+    if (user.id.toString() !== targetAccount.id) {
+      return {
+        success: false,
+        type: "identity_mismatch",
+        message: `Identity mismatch: expected ${targetAccount.login} but got ${user.login}. Log in with the correct GitHub account.`,
+      }
+    }
+
+    return {
+      success: true,
+      user: {
+        login: user.login,
+        avatarUrl: user.avatar_url,
+      },
+    }
+  } catch {
+    return {
+      success: false,
+      type: "auth_error",
+      message: "Failed to verify GitHub identity",
+    }
+  } finally {
+    if (state.githubToken === token) {
+      state.githubToken = previousToken
+    }
+  }
+}
+
 // Poll for access token during reconnect flow
-/* eslint-disable require-atomic-updates */
 adminRoutes.post("/api/auth/reconnect/poll", async (c) => {
   const body = await c.req.json<ReconnectPollRequestBody>()
 
@@ -429,36 +480,20 @@ adminRoutes.post("/api/auth/reconnect/poll", async (c) => {
     return c.json({ error: { message: result.error, type: "auth_error" } }, 500)
   }
 
-  // Verify the new token resolves to the same GitHub identity
-  const previousToken = state.githubToken
-  state.githubToken = result.token
+  const identityResult = await verifyReconnectIdentity(
+    result.token,
+    targetAccount,
+  )
 
-  let user
-  try {
-    user = await getGitHubUser()
-  } catch {
-    state.githubToken = previousToken
+  if (!identityResult.success) {
     return c.json(
       {
         error: {
-          message: "Failed to verify GitHub identity",
-          type: "auth_error",
+          message: identityResult.message,
+          type: identityResult.type,
         },
       },
-      500,
-    )
-  }
-
-  if (user.id.toString() !== targetAccount.id) {
-    state.githubToken = previousToken
-    return c.json(
-      {
-        error: {
-          message: `Identity mismatch: expected ${targetAccount.login} but got ${user.login}. Log in with the correct GitHub account.`,
-          type: "identity_mismatch",
-        },
-      },
-      400,
+      identityResult.type === "auth_error" ? 500 : 400,
     )
   }
 
@@ -466,8 +501,8 @@ adminRoutes.post("/api/auth/reconnect/poll", async (c) => {
   const updatedAccount: Account = {
     ...targetAccount,
     token: result.token,
-    login: user.login,
-    avatarUrl: user.avatar_url,
+    login: identityResult.user.login,
+    avatarUrl: identityResult.user.avatarUrl,
   }
 
   await addAccount(updatedAccount)
@@ -492,7 +527,6 @@ adminRoutes.post("/api/auth/reconnect/poll", async (c) => {
     },
   })
 })
-/* eslint-enable require-atomic-updates */
 
 // Get current auth status
 adminRoutes.get("/api/auth/status", async (c) => {
