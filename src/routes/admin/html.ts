@@ -462,6 +462,7 @@ export const adminHtml = `<!DOCTYPE html>
         (acc.isActive ? '<span class="account-badge">Active</span>' : '') +
         '<div class="account-actions">' +
         (!acc.isActive ? '<button class="btn btn-sm" data-action="switch" data-id="' + escHtml(acc.id) + '">Switch</button>' : '') +
+        '<button class="btn btn-sm" data-action="reconnect" data-id="' + escHtml(acc.id) + '" data-login="' + escHtml(acc.login) + '" data-account-type="' + escHtml(acc.accountType) + '">Reconnect</button>' +
         '<button class="btn btn-sm btn-danger" data-action="delete-account" data-id="' + escHtml(acc.id) + '" data-login="' + escHtml(acc.login) + '">Delete</button>' +
         '</div></li>').join('');
     }
@@ -557,6 +558,25 @@ export const adminHtml = `<!DOCTYPE html>
     function showModal(show) {
       document.getElementById('authModal').classList.toggle('active', show);
       if (!show && pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+      if (!show) {
+        authMode = 'add';
+        reconnectAccountId = null;
+        document.getElementById('authModalTitle').textContent = 'Add GitHub Account';
+        document.getElementById('accountTypeSection').style.display = 'block';
+        document.getElementById('reconnectInfo').style.display = 'none';
+        document.getElementById('authSuccessText').textContent = 'Account added successfully!';
+      }
+    }
+    function startReconnect(id, login, accountType) {
+      authMode = 'reconnect';
+      reconnectAccountId = id;
+      document.getElementById('authModalTitle').textContent = 'Reconnect GitHub Account';
+      document.getElementById('accountTypeSection').style.display = 'none';
+      document.getElementById('reconnectInfo').style.display = 'block';
+      document.getElementById('reconnectLogin').textContent = login;
+      document.getElementById('reconnectAccountType').textContent = accountType;
+      showStep(1);
+      showModal(true);
     }
     function showStep(step) {
       document.getElementById('authStep1').style.display = step === 1 ? 'block' : 'none';
@@ -565,13 +585,22 @@ export const adminHtml = `<!DOCTYPE html>
     }
     async function startAuth() {
       try {
-        const res = await fetch(API_BASE + '/auth/device-code', { method: 'POST' });
+        let res;
+        if (authMode === 'reconnect') {
+          res = await fetch(API_BASE + '/auth/reconnect/device-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId: reconnectAccountId })
+          });
+        } else {
+          res = await fetch(API_BASE + '/auth/device-code', { method: 'POST' });
+        }
         const data = await res.json();
         if (data.error) { alert(data.error.message); return; }
         document.getElementById('deviceCode').textContent = data.userCode;
         document.getElementById('verificationLink').href = data.verificationUri;
         showStep(2);
-        const accountType = document.getElementById('accountType').value;
+        const accountType = authMode === 'add' ? document.getElementById('accountType').value : null;
         let currentInterval = data.interval || 5;
         pollInterval = setInterval(() => pollAuth(data.deviceCode, accountType), currentInterval * 1000);
       } catch (e) { alert('Failed to start authorization'); }
@@ -579,16 +608,27 @@ export const adminHtml = `<!DOCTYPE html>
     let currentInterval = 5;
     async function pollAuth(deviceCode, accountType) {
       try {
-        const res = await fetch(API_BASE + '/auth/poll', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceCode, accountType })
-        });
+        let res;
+        if (authMode === 'reconnect') {
+          res = await fetch(API_BASE + '/auth/reconnect/poll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceCode, accountId: reconnectAccountId })
+          });
+        } else {
+          res = await fetch(API_BASE + '/auth/poll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceCode, accountType })
+          });
+        }
         const data = await res.json();
         console.log('Poll response:', data);
         if (data.success) {
           clearInterval(pollInterval);
           pollInterval = null;
+          document.getElementById('authSuccessText').textContent =
+            authMode === 'reconnect' ? 'Account reconnected and is now active!' : 'Account added successfully!';
           showStep(3);
           setTimeout(() => { fetchAccounts(); fetchStatus(); }, 500);
         } else if (data.error) {
@@ -623,6 +663,8 @@ export const adminHtml = `<!DOCTYPE html>
       const { action, id, login, from } = actionEl.dataset;
       if (action === 'switch' && id) {
         switchAccount(id);
+      } else if (action === 'reconnect' && id) {
+        startReconnect(id, actionEl.dataset.login || '', actionEl.dataset.accountType || '');
       } else if (action === 'delete-account' && id) {
         deleteAccount(id, login || '');
       } else if (action === 'delete-mapping' && from) {

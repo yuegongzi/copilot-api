@@ -19,6 +19,7 @@ describe("adminHtml hardening", () => {
     expect(adminHtml).toContain("document.addEventListener('click'")
     expect(adminHtml).toContain("closest('[data-action]')")
     expect(adminHtml).toContain('data-action="switch"')
+    expect(adminHtml).toContain('data-action="reconnect"')
     expect(adminHtml).toContain('data-action="delete-account"')
     expect(adminHtml).toContain('data-action="delete-mapping"')
     expect(adminHtml).not.toContain('onclick="switchAccount')
